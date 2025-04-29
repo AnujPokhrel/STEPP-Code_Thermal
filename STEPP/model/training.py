@@ -215,5 +215,5 @@ class TrainFeatureReconstructor():
 if __name__ == '__main__':
     wandb.init(project='STEPP')
 
-    path_to_features = f'path_to_features'
+    path_to_features = f'/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Dataset'
     TrainFeatureReconstructor(path_to_features, epochs=1000000).main()

@@ -8,8 +8,33 @@ import os
 import sys
 from matplotlib.patches import Polygon
 from scipy.spatial.distance import cdist
+from scipy.spatial.transform import Rotation as R
+import json
+import argparse
+import pdb
+
+parser = argparse.ArgumentParser(
+    description="Project future‐pose footprints onto thermal frames"
+)
+parser.add_argument("--root-dir",  "-r", required=True, default='/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Training_IR_Batch1',
+                    help="root folder containing .pkl and matching image subfolders")
+# parser.add_argument("--pkl-path",  "-p", required=True,
+                    # help="path to one .pkl file to process")
+parser.add_argument("--n_samples", "-n", type=int, default=3,
+                    help="how many sample points per frame")
+args = parser.parse_args()
+
+# ROOT_DIR    = args.root_dir
+# file_path   = args.pkl_path
+
 
 # --- No SAM Needed ---
+root_file_name = args.root_dir 
+# root_file_name = 'BL_2024-09-04_19-09-17_0'
+ROOT_DIR = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Training_IR_Batch1'
+file_path = os.path.join(ROOT_DIR, f"{root_file_name}" + ".pkl")
+coordinates_path = os.path.join(ROOT_DIR, "all_poses", f"{root_file_name}", "path_poses.txt")
+n_samples   = 5 
 
 # --- Helper Functions (Modified for footprint drawing) ---
 
@@ -218,9 +243,16 @@ def yaw_from_quaternion(qx, qy, qz, qw):
 # --- Main Processing Loop ---
 
 # Load the pickle file
-file_path ='/home/harsh/Downloads/bags/WC1_2024-08-27_19-57-34_chunk0000_updated.pkl' 
+# BL_2024-09-04_19-09-17_chunk0000_processed
 with open(file_path, "rb") as f:
     data = pickle.load(f)
+
+split_file_path = file_path.split('/')
+split_file_path = split_file_path[-1].split('.')[0]
+split_file_path = split_file_path.split('_')
+                    #BL                         2024-09-04         _    19-24-16            _chunk0000
+# pure_bag_name = split_file_path[0] + '_' + split_file_path[1] + '_' + split_file_path[2]
+pure_bag_name = root_file_name
 
 # Camera parameters
 camera_height = 0.409 + 0.1
@@ -229,19 +261,74 @@ fx, fy, cx, cy = 935.2355857804463, 935.7905325732659, 656.1572332633887, 513.71
 camera_matrix = gen_camera_matrix(fx, fy, cx, cy)
 dist_coeffs = np.array([-0.08194476107782814, -0.06592640858415261, -0.0007043163003212235, 0.002577256982584405])
 
-output_dir = '/home/harsh/Downloads/bags/WC1_2024-08-27-19-57-34_footprintT6'
-os.makedirs(output_dir, exist_ok=True)
+output_dir = os.path.join(ROOT_DIR , 'Traj_Footprints')
+# Create the output directory if it doesn't exist
+if not os.path.exists(output_dir):
+    print(f"{output_dir =}")
+    print(f"{ROOT_DIR = }")
+    os.makedirs(output_dir)     
 
 # Data
-original_odom_poses = data['odom_poses']
-thermal_images = data['thermal_npaths']
+odom_poses = data['odom_pose']
+thermal_images = data['thermal_paths']
 thermal_ts_list = data['thermal_timestamps']
-odom_timestamps = [p['timestamp'] for p in original_odom_poses]
+roll_pitch_yaw = data['roll_pitch_yaw']
+# odom_timestamps = [p['timestamp'] for p in original_odom_poses]
 max_future_poses = 250
-n_samples = 3  # For visualization
+# n_samples = 6  # For visualization
 # Robot dimensions
 robot_width_meters = 0.6
 robot_length_meters = 1.0
+
+coordinates = []
+orientations = []
+
+T_odom_list = []
+with open(coordinates_path, 'r') as file:
+    for line in file:
+        line = line.strip()
+        if (not line 
+            or line.startswith('#')
+            or line.lower().startswith('timestamp')):
+            continue  # Skip comment lines
+        parts = line.split()
+        if parts:
+            coordinates.append(np.array([float(parts[1]), float(parts[2]), float(parts[3])]))
+            # print(coordinates[-1])
+            orientations.append(np.array([float(parts[4]), float(parts[5]), float(parts[6]), float(parts[7])])) #qx, qy, qz, qw
+            # print(orientations[-1])
+
+            # T_odom = np.eye(4, 4)
+            # T_odom[:3, :3] = R.from_quat(orientations[-1]).as_matrix()[:3, :3]
+            # T_odom[:3, 3] = coordinates[-1]
+            # T_odom_list.append(T_odom)
+
+original_odom_poses = []
+for ts, (x, y, z), qx_qy_qz_qw in zip(thermal_ts_list, coordinates, orientations):
+    # convert RPY → quaternion
+    original_odom_poses.append({
+        'timestamp': ts,
+        'x':          x,
+        'y':          y,
+        'z':          z,
+        'qx':        qx_qy_qz_qw[0],
+        'qy':        qx_qy_qz_qw[1],
+        'qz':        qx_qy_qz_qw[2],
+        'qw':        qx_qy_qz_qw[3],
+    })
+
+odom_ts = np.array([p['timestamp'] for p in original_odom_poses])
+thermal_ts = np.array(thermal_ts_list)
+
+
+print("odom  timestamps: ", odom_ts.min(), "→", odom_ts.max())
+print("thermal timestamps:", thermal_ts.min(), "→", thermal_ts.max())
+
+#change to your folder 
+for index, each in enumerate(thermal_images):
+    split = each.split('/')
+    # thermal_images[index] = os.path.join(ROOT_DIR, split[-2] , split[-1])
+    thermal_images[index] = os.path.join(ROOT_DIR, root_file_name, split[-1])
 
 # --- SCALING FACTORS ---
 width_scale_factor = 3.0  # Increase to make footprints wider
@@ -249,6 +336,7 @@ length_scale_factor = 0 # Increase to make footprints longer
 
 
 # --- Main Loop ---
+all_sampled_pixel_lists = []
 for idx in range(len(thermal_ts_list)):
     thermal_ts = thermal_ts_list[idx]
 
@@ -265,6 +353,7 @@ for idx in range(len(thermal_ts_list)):
     for i, current_pose in enumerate(future_odom):
         X0 = current_pose['x']
         Y0 = current_pose['y']
+        # PSI0 = current_pose['yaw']
         PSI0 = yaw_from_quaternion(current_pose['qx'], current_pose['qy'],
                                  current_pose['qz'], current_pose['qw'])
 
@@ -279,6 +368,7 @@ for idx in range(len(thermal_ts_list)):
 
     # Load and process image
     img_path = thermal_images[idx]
+    # pdb.set_trace()
     img_array = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
     if img_array is None:
         print(f"Error loading image {img_path}")
@@ -300,14 +390,23 @@ for idx in range(len(thermal_ts_list)):
     # FPS for visualization
     sampled_indices = farthest_point_sampling(traj_pixels, n_samples)
 
-    # --- Visualization ---
-    fig, ax = plt.subplots(figsize=(12, 9))
-    # Pass the scaling factors to the plotting function.
-    plot_trajs_and_points_on_image(ax, img_array, traj_pixels, sampled_indices, robot_width_meters, robot_length_meters, camera_matrix, camera_height, camera_x_offset, width_scale_factor, length_scale_factor, traj_color=RED)
+    #GRAB x,y in the image frame
+    sampled_pixels = traj_pixels[sampled_indices].astype(int)
+    all_sampled_pixel_lists.append(sampled_pixels.tolist())
 
-    output_path = os.path.join(output_dir, f'traj_footprint_{idx:04d}.png')
-    plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
-    plt.close()
+    # --- Visualization ---
+    # fig, ax = plt.subplots(figsize=(12, 9))
+    # # Pass the scaling factors to the plotting function.
+    # plot_trajs_and_points_on_image(ax, img_array, traj_pixels, sampled_indices, robot_width_meters, robot_length_meters, camera_matrix, camera_height, camera_x_offset, width_scale_factor, length_scale_factor, traj_color=RED)
+
+    # output_path = os.path.join(output_dir, f'traj_footprint_{idx:04d}.png')
+    # plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+    # plt.close()
     print(f"Processed image {idx}")
+
+json_path = os.path.join(output_dir, f"{pure_bag_name}_samples.json")
+with open(json_path, "w") as jf:
+    json.dump(all_sampled_pixel_lists, jf)
+
 
 print(f"Saved images to {output_dir}!!")

@@ -120,8 +120,8 @@ def main(feat):
 
 if __name__ == '__main__':
 
-    path_to_image_folder = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/subset_data/thermal_BL_2024-09-04_19-09-17_chunk0000_processed/'
-    path_to_pixels = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/utils/OPS_trial.json'
+    path_to_image_folder = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Training_IR_Batch2/thermal_BL_2024-09-04_19-09-17_chunk0000_processed/'
+    path_to_pixels = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Training_IR_Batch2/Traj_Footprints_BL_2024-09-04_19-09-17/BL_2024-09-04_19-09-17_samples.json'
     data_preprocessing = FeatureDataSet(path_to_image_folder, path_to_pixels)
     dataset = main(data_preprocessing)
 
