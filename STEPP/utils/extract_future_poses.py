@@ -35,7 +35,7 @@ def main():
     orientations = []
     directions = []
 
-    folder_path = 'path_to_image_folder'
+    folder_path = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/BL_2024-09-04_19-11-17_chunk0002_processed'
     images = sorted([os.path.join(folder_path, img) for img in os.listdir(folder_path) if img.endswith((".png", ".jpg", ".jpeg"))])
     img_file_names = [os.path.basename(img) for img in images]
 
@@ -46,7 +46,7 @@ def main():
     pub2 = rospy.Publisher('/trajectory2', odom, queue_size=10)
 
     # Load the coordinates and orientations
-    coordinates_path = 'path_to_txt_file_containing_odometry_data'
+    coordinates_path = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/odometry.txt'
 
     T_odom_list = []
     with open(coordinates_path, 'r') as file:
@@ -152,11 +152,17 @@ def main():
         p_C2 = points.T
         # Project a 3D point into the pixel plane
         #make the point number a 6 digit string
+        img_path = folder_path + img_file_names[point]
         img = cv2.imread(folder_path + img_file_names[point])
         # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    
-        img_points = []
+        if img is None:
+            print(f"Failed to laod image: {img_path}.")
+            continue
 
+        print(f"Processing image {point}: {img_path}")
+        print(f"Number of future points to project: {points.shape[0]}")
+
+        img_points = []
         u_C2_past[0] = 1280/2
         u_C2_past[1] = 720
 
@@ -167,6 +173,7 @@ def main():
             u_C1 = tmp_p[:, 0]
             tmp_p, _ = cv2.projectPoints(p_C.reshape(1, 1, 3), np.zeros((3, 1)), np.zeros((3, 1)), K, D)
             u_C2 = tmp_p[0, 0, :2]
+            print(f"Projected point {j}: {u_C2}")
             if u_C2[0] < camera_pinhole.width and u_C2[0] > 30 and u_C2[1] < camera_pinhole.height-20 and u_C2[1] > 0:
 
                 # set points to be drawn on the image
@@ -175,19 +182,24 @@ def main():
 
                 #append img_points to img_points
                 img_points.append([int(u_C2[0]),int(u_C2[1])])
-
+                print(f"Valid point added: {u_C2}")
+            else:
+                print(f"Point out of bounds: {u_C2}")
             u_C2_past = u_C2
         # print(img_points)
         #append img_points to all_points as another dimension
-
+        print(f"Number of valid points for image {point}: {len(img_points)}")
         all_points.append(img_points)
 
         # Display the image with the points drawn on it in the cv2 window
         cv2.imshow('image', img)
-        cv2.waitKey(0)
+        cv2.waitKey(1)
 
         print(f"Point {point}/{len(coordinates)}", end='\r')
-    
+
+    cv2.destroyAllWindows() 
+    print(f"Total number of images processed: {len(all_points)}")
+    print(f"Sample of all_points: {all_points[:5]}")
     #save all_points to a numpy file
     # print(all_points[-7:])
     print(len(all_points))

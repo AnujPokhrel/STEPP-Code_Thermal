@@ -20,8 +20,8 @@ from STEPP.DINO.dino_feature_extract import get_dino_features, average_dino_feat
 
 class FeatureDataSet:
     def __init__(self, path_to_image_folder, path_to_pixels):
-        self.img_width = 1408#1280
-        self.img_height = 1408#720
+        self.img_width = 1280
+        self.img_height = 1024 
         self.x_boarder = 0 #20
         self.y_boarder = 0 #30
         self.start_image_idx = 0#750
@@ -120,11 +120,11 @@ def main(feat):
 
 if __name__ == '__main__':
 
-    path_to_image_folder = 'path_to_image_folder'
-    path_to_pixels = 'path_to_pixels.json'
+    path_to_image_folder = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/subset_data/thermal_BL_2024-09-04_19-09-17_chunk0000_processed/'
+    path_to_pixels = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/utils/OPS_trial.json'
     data_preprocessing = FeatureDataSet(path_to_image_folder, path_to_pixels)
     dataset = main(data_preprocessing)
 
     #save dataset
-    dataset_path = 'path_to_save_dataset'
+    dataset_path = '/home/vader/RobotiXX/STEPP-Code_Thermal/STEPP/Data/Dataset/trail1.npy'
     np.save(dataset_path, dataset)
